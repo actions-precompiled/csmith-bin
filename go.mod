@@ -1,0 +1,11 @@
+module github.com/actions-precompiled/csmith
+
+go 1.26.5
+
+require github.com/actions-precompiled/foundation v0.0.0-20260801005841-2724b0cc947e
+
+require (
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
+)

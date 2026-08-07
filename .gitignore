@@ -1,0 +1,6 @@
+/target/
+/bin/
+*.test
+/csmith-apc
+/tmp/
+/.cache/
