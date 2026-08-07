@@ -47,7 +47,11 @@ func smokeLinuxTarball(ctx context.Context, deps foundation.Deps, meta foundatio
 
 	env := foundation.CleanSmokeEnv(deps.Env.Environ())
 
-	if err := foundation.SmokeBinDirHelp(ctx, deps, root, foundation.BinHelpOpts{Env: env}); err != nil {
+	// Only bin/csmith is shipped; still walk bin/ for self-contained start.
+	if err := foundation.SmokeBinDirHelp(ctx, deps, root, foundation.BinHelpOpts{
+		Env:          env,
+		SkipSuffixes: []string{".pl", ".in", ".py", ".sh", ".txt"},
+	}); err != nil {
 		return err
 	}
 

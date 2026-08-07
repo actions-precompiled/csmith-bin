@@ -84,8 +84,14 @@ func workLinux(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 		}
 	}
 
-	// Drop static libs / cmake helpers users do not need at runtime for generation.
-	// Keep include/ (headers for compiling generated C) and any shared libs.
+	// Upstream also installs Perl drivers + data into bin/ (compiler_test.pl,
+	// launchn.pl, compiler_test.in). Those need a full source tree and break
+	// SmokeBinDirHelp (exec format error on .in). Ship only the generator.
+	if err := pruneBinToCsmith(deps, filepath.Join(prefix, "bin")); err != nil {
+		return err
+	}
+
+	// Drop cmake/pkgconfig metadata. Keep include/ + shared libs.
 	_ = deps.Runner.Run(ctx, "bash", "-c",
 		"rm -rf "+shellQuote(filepath.Join(prefix, "lib", "cmake"))+" "+
 			shellQuote(filepath.Join(prefix, "lib", "pkgconfig"))+" 2>/dev/null; true")
@@ -174,6 +180,26 @@ func envOr(deps foundation.Deps, key, def string) string {
 		return v
 	}
 	return def
+}
+
+// pruneBinToCsmith removes everything under bin/ except the csmith binary.
+func pruneBinToCsmith(deps foundation.Deps, binDir string) error {
+	entries, err := deps.FS.ReadDir(binDir)
+	if err != nil {
+		return fmt.Errorf("read bin: %w", err)
+	}
+	for _, e := range entries {
+		if e.Name() == "csmith" {
+			continue
+		}
+		path := filepath.Join(binDir, e.Name())
+		deps.Logf("prune bin: remove %s", e.Name())
+		deps.RemoveAllLog(path, "prune")
+	}
+	if _, err := deps.FS.Stat(filepath.Join(binDir, "csmith")); err != nil {
+		return fmt.Errorf("%w after prune", ErrCsmithMissing)
+	}
+	return nil
 }
 
 func shellQuote(s string) string {
