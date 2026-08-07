@@ -1,4 +1,4 @@
-# actions-precompiled / csmith
+# actions-precompiled / csmith-bin
 
 Relocatable **[Csmith](https://github.com/csmith-project/csmith)** builds with
 [`foundation`](https://github.com/actions-precompiled/foundation) (Cobra CLI).
