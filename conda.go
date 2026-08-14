@@ -26,21 +26,17 @@ func condaPrefix(deps foundation.Deps) string {
 	return filepath.Join(deps.WorkDir, ".cache", "conda-env")
 }
 
-// condaCreatePkgs is the self-contained native toolchain.
-// Windows uses MinGW (m2w64-*) — conda clangxx/cxx-compiler on win still
-// want a Visual Studio install.
+// condaCreatePkgs is cmake/ninja/m4 plus a compiler where conda can supply one.
+// Windows compile uses MSVC: csmith 2.3.0 platform.cpp uses MSVC `_asm`.
 func condaCreatePkgs() []string {
 	pkgs := []string{condaCmakePin, condaNinjaPin}
 	if runtime.GOOS == "windows" {
-		return append(pkgs, "m2w64-toolchain", "m2-m4")
+		return append(pkgs, "m2-m4")
 	}
 	return append(pkgs, "clang", "clangxx", "lld", condaM4Pin)
 }
 
 func condaCompilers() (cc, cxx string) {
-	if runtime.GOOS == "windows" {
-		return "gcc", "g++"
-	}
 	return "clang", "clang++"
 }
 

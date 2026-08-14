@@ -17,11 +17,11 @@ func TestCondaCreatePkgs(t *testing.T) {
 		t.Fatalf("missing cmake/ninja: %v", pkgs)
 	}
 	if runtime.GOOS == "windows" {
-		if !containsStr(pkgs, "m2w64-toolchain") || !containsStr(pkgs, "m2-m4") {
+		if !containsStr(pkgs, "m2-m4") {
 			t.Fatalf("windows pkgs: %v", pkgs)
 		}
-		if containsStr(pkgs, "clang") {
-			t.Fatalf("windows must not use conda clang (needs MSVC): %v", pkgs)
+		if containsStr(pkgs, "m2w64-toolchain") || containsStr(pkgs, "clang") {
+			t.Fatalf("windows compile is MSVC, not conda gcc/clang: %v", pkgs)
 		}
 	} else {
 		if !containsStr(pkgs, "clang") || !containsStr(pkgs, "clangxx") {
@@ -33,12 +33,6 @@ func TestCondaCreatePkgs(t *testing.T) {
 func TestCondaCompilers(t *testing.T) {
 	t.Parallel()
 	cc, cxx := condaCompilers()
-	if runtime.GOOS == "windows" {
-		if cc != "gcc" || cxx != "g++" {
-			t.Fatalf("got %s/%s", cc, cxx)
-		}
-		return
-	}
 	if cc != "clang" || cxx != "clang++" {
 		t.Fatalf("got %s/%s", cc, cxx)
 	}

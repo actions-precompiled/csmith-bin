@@ -80,8 +80,8 @@ func smokeTarball(ctx context.Context, deps foundation.Deps, meta foundation.Met
 		return err
 	}
 	compileEnv := env
-	if foundation.IsNativeTarget(target) {
-		// Generated binary is smoked under CleanSmokeEnv; the compiler lives in the conda env.
+	if foundation.IsDarwinTarget(target) {
+		// Generated binary is smoked under CleanSmokeEnv; Darwin cc is conda clang.
 		compileEnv = condaEnviron(deps, deps.Env.Environ())
 	}
 	if err := compileGenerated(ctx, deps, compileEnv, target, tmp, inc, gen); err != nil {
@@ -93,19 +93,27 @@ func smokeTarball(ctx context.Context, deps foundation.Deps, meta foundation.Met
 }
 
 func compileGenerated(ctx context.Context, deps foundation.Deps, env []string, target, tmp, inc, gen string) error {
+	if foundation.IsWindowsTarget(target) {
+		obj := filepath.Join(tmp, "random.obj")
+		exe := filepath.Join(tmp, "random.exe")
+		out, err := foundation.OutputWithEnv(ctx, deps, env, "cl",
+			"/nologo", "/O0", "/I"+inc, "/Fo"+obj, "/Fe"+exe, gen)
+		if err != nil {
+			return fmt.Errorf("%w: %w\n%s", ErrCompileGenerated, err, out)
+		}
+		deps.Logf("cl compiled generated C with /I%s", inc)
+		return nil
+	}
 	cc := "gcc"
-	obj := filepath.Join(tmp, "random")
-	if foundation.IsNativeTarget(target) {
-		name, _ := condaCompilers()
+	if foundation.IsDarwinTarget(target) {
 		var err error
+		name, _ := condaCompilers()
 		cc, err = resolveCondaExe(condaPrefix(deps), name)
 		if err != nil {
 			return err
 		}
 	}
-	if foundation.IsWindowsTarget(target) {
-		obj += ".exe"
-	}
+	obj := filepath.Join(tmp, "random")
 	out, err := foundation.OutputWithEnv(ctx, deps, env, cc, "-O0", "-I"+inc, "-o", obj, gen)
 	if err != nil {
 		return fmt.Errorf("%w: %w\n%s", ErrCompileGenerated, err, out)

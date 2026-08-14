@@ -10,10 +10,10 @@ Csmith is a random generator of C programs (compiler differential testing).
 **Self-contained Linux trees** — post-install `patchelf` sets `$ORIGIN` RPATH;
 smoke runs with a clean loader env (no `LD_LIBRARY_PATH`).
 
-**Windows / macOS** build natively in a conda-forge env. `mise` installs
-`micromamba`; PrepHost creates `.cache/conda-env` with cmake, ninja, m4, and
-a compiler (MinGW on Windows, clang on macOS). Go stays on mise — that is the
-org-wide package CLI toolchain.
+**Windows / macOS** build natively. `mise` installs `micromamba`; PrepHost
+creates `.cache/conda-env` with cmake, ninja, and m4. macOS compiles with
+conda clang (`-std=c++14`). Windows compiles with MSVC — csmith 2.3.0 uses
+`_asm` in `platform.cpp`. Go stays on mise.
 
 **Linux stays Docker.** Artifacts are Ubuntu 24.04 glibc + `$ORIGIN` RPATH.
 A conda compiler would vendor conda `libstdc++` and change that contract.
@@ -60,7 +60,7 @@ Dockerfile is **deps only** (no shell `ENTRYPOINT`).
 ## Targets
 
 - `linux-amd64`, `linux-aarch64` — Docker on GHA ubuntu runners
-- `windows-amd64` — native on `windows-latest` (conda MinGW, statically linked)
+- `windows-amd64` — native on `windows-latest` (MSVC + conda cmake/ninja/m4)
 - `darwin-amd64` — native on `macos-13` (conda clang; non-system dylibs vendored)
 - `darwin-aarch64` — native on `macos-latest` (same)
 

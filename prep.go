@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/actions-precompiled/foundation"
@@ -40,17 +41,28 @@ func prepNativeHost(ctx context.Context, deps foundation.Deps) error {
 	if err := ensureCondaEnv(ctx, deps); err != nil {
 		return err
 	}
-	cc, cxx := condaCompilers()
-	for _, tool := range []struct {
+	tools := []struct {
 		name string
 		args []string
 	}{
 		{"cmake", []string{"--version"}},
 		{"ninja", []string{"--version"}},
 		{"m4", []string{"--version"}},
-		{cc, []string{"--version"}},
-		{cxx, []string{"--version"}},
-	} {
+	}
+	if runtime.GOOS != "windows" {
+		cc, cxx := condaCompilers()
+		tools = append(tools,
+			struct {
+				name string
+				args []string
+			}{cc, []string{"--version"}},
+			struct {
+				name string
+				args []string
+			}{cxx, []string{"--version"}},
+		)
+	}
+	for _, tool := range tools {
 		abs, err := resolveCondaExe(condaPrefix(deps), tool.name)
 		if err != nil {
 			return err
@@ -61,6 +73,18 @@ func prepNativeHost(ctx context.Context, deps foundation.Deps) error {
 		}
 		deps.Logf("PrepHost: %s (%s) %s", tool.name, abs, firstLine(out))
 	}
+	if runtime.GOOS == "windows" {
+		return requireMSVC(ctx, deps)
+	}
+	return nil
+}
+
+func requireMSVC(ctx context.Context, deps foundation.Deps) error {
+	out, err := deps.Runner.Output(ctx, "where", "cl")
+	if err != nil {
+		return fmt.Errorf("%w", ErrMSVCNotOnPATH)
+	}
+	deps.Logf("PrepHost: MSVC cl %s", firstLine(out))
 	return nil
 }
 

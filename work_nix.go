@@ -50,6 +50,10 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 	}
 	cmakeArgs = append(cmakeArgs, cmakeRPathArgs(req.Target)...)
 	if foundation.IsNativeTarget(req.Target) {
+		// 2.3.0 uses bind2nd/ptr_fun; clang 22+ and new MSVC default past C++14.
+		cmakeArgs = append(cmakeArgs, "-DCMAKE_CXX_STANDARD=14")
+	}
+	if foundation.IsDarwinTarget(req.Target) {
 		pref := condaPrefix(deps)
 		cc, cxx := condaCompilers()
 		ccAbs, err := resolveCondaExe(pref, cc)
@@ -64,10 +68,6 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 			"-DCMAKE_C_COMPILER="+ccAbs,
 			"-DCMAKE_CXX_COMPILER="+cxxAbs,
 		)
-		if foundation.IsWindowsTarget(req.Target) {
-			// MinGW: one relocatable exe, no libstdc++/libgcc DLLs beside it.
-			cmakeArgs = append(cmakeArgs, "-DCMAKE_EXE_LINKER_FLAGS=-static")
-		}
 	}
 	run := deps.Runner.Run
 	if foundation.IsNativeTarget(req.Target) {
