@@ -60,7 +60,7 @@ Dockerfile is **deps only** (no shell `ENTRYPOINT`).
 ## Targets
 
 - `linux-amd64`, `linux-aarch64` — Docker on GHA ubuntu runners
-- `windows-amd64` — native on `windows-latest` (MSVC + conda cmake/ninja/m4)
+- `windows-amd64` — native on `windows-latest` (MSVC `cl` + conda cmake/ninja/m4; static libcsmith only)
 - `darwin-amd64` — native on `macos-13` (conda clang; non-system dylibs vendored)
 - `darwin-aarch64` — native on `macos-latest` (same)
 

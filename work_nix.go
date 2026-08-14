@@ -53,6 +53,16 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 		// 2.3.0 uses bind2nd/ptr_fun; clang 22+ and new MSVC default past C++14.
 		cmakeArgs = append(cmakeArgs, "-DCMAKE_CXX_STANDARD=14")
 	}
+	if foundation.IsWindowsTarget(req.Target) {
+		// GHA PATH has LLVM clang first; csmith 2.3.0 needs MSVC `_asm`.
+		cmakeArgs = append(cmakeArgs,
+			"-DCMAKE_C_COMPILER=cl",
+			"-DCMAKE_CXX_COMPILER=cl",
+		)
+		if err := disableWindowsSharedRuntime(deps, src); err != nil {
+			return err
+		}
+	}
 	if foundation.IsDarwinTarget(req.Target) {
 		pref := condaPrefix(deps)
 		cc, cxx := condaCompilers()
@@ -67,6 +77,8 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 		cmakeArgs = append(cmakeArgs,
 			"-DCMAKE_C_COMPILER="+ccAbs,
 			"-DCMAKE_CXX_COMPILER="+cxxAbs,
+			// clang 22: Filter.h uses enum value 2 as a template arg.
+			"-DCMAKE_CXX_FLAGS=-Wno-enum-constexpr-conversion",
 		)
 	}
 	run := deps.Runner.Run
@@ -310,4 +322,53 @@ func findCsmithBin(deps foundation.Deps, root string) (string, error) {
 func isUnderCache(src string) bool {
 	s := filepath.ToSlash(src)
 	return strings.Contains(s, "/.cache/src/") || s == "/src" || strings.HasPrefix(s, "/src/")
+}
+
+// disableWindowsSharedRuntime skips libcsmith_so. On Windows both the static
+// lib and the DLL import lib are named csmith.lib; Ninja rejects the clash.
+func disableWindowsSharedRuntime(deps foundation.Deps, src string) error {
+	path := filepath.Join(src, "runtime", "CMakeLists.txt")
+	data, err := deps.FS.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read runtime CMakeLists: %w", err)
+	}
+	out, ok := wrapSharedRuntimeCMake(string(data))
+	if !ok {
+		return fmt.Errorf("runtime CMakeLists: no libcsmith_so block to wrap")
+	}
+	if out == string(data) {
+		return nil
+	}
+	deps.Logf("Windows: skip shared libcsmith (duplicate csmith.lib)")
+	return deps.FS.WriteFile(path, []byte(out), 0o644)
+}
+
+func wrapSharedRuntimeCMake(s string) (string, bool) {
+	if !strings.Contains(s, "add_library(libcsmith_so") {
+		return s, false
+	}
+	if strings.Contains(s, "APC_SKIP_SHARED_RUNTIME") {
+		return s, true
+	}
+	const start = "# Build and install the shared library."
+	idx := strings.Index(s, start)
+	if idx < 0 {
+		idx = strings.Index(s, "add_library(libcsmith_so")
+	}
+	if idx < 0 {
+		return s, false
+	}
+	const end = "RUNTIME DESTINATION \"${LIB_DIR}\"\n  )"
+	endIdx := strings.Index(s[idx:], end)
+	if endIdx < 0 {
+		return s, false
+	}
+	endIdx = idx + endIdx + len(end)
+	var b strings.Builder
+	b.WriteString(s[:idx])
+	b.WriteString("if(NOT WIN32) # APC_SKIP_SHARED_RUNTIME\n")
+	b.WriteString(s[idx:endIdx])
+	b.WriteString("\nendif() # APC_SKIP_SHARED_RUNTIME")
+	b.WriteString(s[endIdx:])
+	return b.String(), true
 }
