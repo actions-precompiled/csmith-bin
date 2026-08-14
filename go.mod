@@ -2,7 +2,7 @@ module github.com/actions-precompiled/csmith
 
 go 1.26.5
 
-require github.com/actions-precompiled/foundation v0.0.0-20260814185126-47642cd5f6b1
+require github.com/actions-precompiled/foundation v0.0.0-20260814220133-35fed4dfa036
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

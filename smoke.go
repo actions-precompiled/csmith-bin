@@ -29,7 +29,7 @@ func smokeTarball(ctx context.Context, deps foundation.Deps, meta foundation.Met
 	}
 	defer deps.RemoveAllLog(tmp, "smoke cleanup")
 
-	if err := deps.Runner.Run(ctx, "tar", "-xzf", tarball, "-C", tmp); err != nil {
+	if err := foundation.ExtractTarGz(tarball, tmp); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
 	root := filepath.Join(tmp, meta.Name)
