@@ -41,20 +41,23 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 	}
 	deps.Logf("Resolved ref=%s sha=%s artifact=%s src=%s", ref, sha, artifactVer, src)
 
+	if err := applyUpstreamPatches(ctx, deps, src); err != nil {
+		return err
+	}
+
 	cmakeArgs := []string{
 		"-G", "Ninja",
 		"-S", src,
 		"-B", build,
 		"-DCMAKE_BUILD_TYPE=Release",
 		"-DCMAKE_INSTALL_PREFIX=" + prefix,
+		// Same knobs as conda-forge/staged-recipes#34531.
+		"-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+		"-DCMAKE_CXX_STANDARD=14",
 	}
 	cmakeArgs = append(cmakeArgs, cmakeRPathArgs(req.Target)...)
-	if foundation.IsNativeTarget(req.Target) {
-		// 2.3.0 uses bind2nd/ptr_fun; clang 22+ and new MSVC default past C++14.
-		cmakeArgs = append(cmakeArgs, "-DCMAKE_CXX_STANDARD=14")
-	}
 	if foundation.IsWindowsTarget(req.Target) {
-		// GHA PATH has LLVM clang first; csmith 2.3.0 needs MSVC `_asm`.
+		// GHA PATH has LLVM clang first; keep MSVC for the Windows binary.
 		cmakeArgs = append(cmakeArgs,
 			"-DCMAKE_C_COMPILER=cl",
 			"-DCMAKE_CXX_COMPILER=cl",
@@ -77,8 +80,6 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 		cmakeArgs = append(cmakeArgs,
 			"-DCMAKE_C_COMPILER="+ccAbs,
 			"-DCMAKE_CXX_COMPILER="+cxxAbs,
-			// clang 22: Filter.h uses enum value 2 as a template arg.
-			"-DCMAKE_CXX_FLAGS=-Wno-enum-constexpr-conversion",
 		)
 	}
 	run := deps.Runner.Run

@@ -12,8 +12,9 @@ smoke runs with a clean loader env (no `LD_LIBRARY_PATH`).
 
 **Windows / macOS** build natively. `mise` installs `micromamba`; PrepHost
 creates `.cache/conda-env` with cmake, ninja, and m4. macOS compiles with
-conda clang (`-std=c++14`). Windows compiles with MSVC — csmith 2.3.0 uses
-`_asm` in `platform.cpp`. Go stays on mise.
+conda clang. Windows compiles with MSVC `cl`. After clone we apply the same
+2.3.0 backports as [conda-forge/staged-recipes#34531](https://github.com/conda-forge/staged-recipes/pull/34531)
+(FilterKind, x64 `_asm`, bind2nd/ptr_fun, `install(TARGETS)`). Go stays on mise.
 
 **Linux stays Docker.** Artifacts are Ubuntu 24.04 glibc + `$ORIGIN` RPATH.
 A conda compiler would vendor conda `libstdc++` and change that contract.
