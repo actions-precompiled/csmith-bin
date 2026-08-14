@@ -99,20 +99,50 @@ func condaEnviron(deps foundation.Deps, base []string) []string {
 	return env
 }
 
+// resolveCondaExe returns an absolute path under the env prefix.
+// exec.LookPath uses the process PATH, not Cmd.Env — names like "m4" would
+// miss m2-m4 on Windows and pick /usr/bin/m4 or host cmake on macOS.
+func resolveCondaExe(prefix, name string) (string, error) {
+	base := strings.TrimSuffix(name, ".exe")
+	cands := []string{base}
+	if runtime.GOOS == "windows" {
+		cands = []string{base + ".exe", base}
+	}
+	var tried []string
+	for _, dir := range condaBinDirs(prefix) {
+		for _, c := range cands {
+			p := filepath.Join(dir, c)
+			tried = append(tried, p)
+			if st, err := os.Stat(p); err == nil && !st.IsDir() {
+				return p, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("%w: %s not under %s (tried %s)", ErrHostToolMissing, name, prefix, strings.Join(tried, ", "))
+}
+
 func runInConda(ctx context.Context, deps foundation.Deps, name string, args ...string) error {
+	abs, err := resolveCondaExe(condaPrefix(deps), name)
+	if err != nil {
+		return err
+	}
 	env := condaEnviron(deps, deps.Env.Environ())
 	if rw, ok := deps.Runner.(foundation.RunnerWithOpts); ok {
-		return rw.RunWith(ctx, foundation.RunOpts{Env: env}, name, args...)
+		return rw.RunWith(ctx, foundation.RunOpts{Env: env}, abs, args...)
 	}
-	return deps.Runner.Run(ctx, name, args...)
+	return deps.Runner.Run(ctx, abs, args...)
 }
 
 func outputInConda(ctx context.Context, deps foundation.Deps, name string, args ...string) (string, error) {
+	abs, err := resolveCondaExe(condaPrefix(deps), name)
+	if err != nil {
+		return "", err
+	}
 	env := condaEnviron(deps, deps.Env.Environ())
 	if rw, ok := deps.Runner.(foundation.RunnerWithOpts); ok {
-		return rw.OutputWith(ctx, foundation.RunOpts{Env: env}, name, args...)
+		return rw.OutputWith(ctx, foundation.RunOpts{Env: env}, abs, args...)
 	}
-	return deps.Runner.Output(ctx, name, args...)
+	return deps.Runner.Output(ctx, abs, args...)
 }
 
 func ensureCondaEnv(ctx context.Context, deps foundation.Deps) error {

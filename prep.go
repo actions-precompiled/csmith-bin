@@ -51,11 +51,15 @@ func prepNativeHost(ctx context.Context, deps foundation.Deps) error {
 		{cc, []string{"--version"}},
 		{cxx, []string{"--version"}},
 	} {
+		abs, err := resolveCondaExe(condaPrefix(deps), tool.name)
+		if err != nil {
+			return err
+		}
 		out, err := outputInConda(ctx, deps, tool.name, tool.args...)
 		if err != nil {
-			return fmt.Errorf("%w: %s in conda env %s: %w", ErrHostToolMissing, tool.name, condaPrefix(deps), err)
+			return fmt.Errorf("%w: %s (%s): %w", ErrHostToolMissing, tool.name, abs, err)
 		}
-		deps.Logf("PrepHost: %s %s", tool.name, firstLine(out))
+		deps.Logf("PrepHost: %s (%s) %s", tool.name, abs, firstLine(out))
 	}
 	return nil
 }

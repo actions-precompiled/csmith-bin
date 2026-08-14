@@ -1,6 +1,9 @@
 package main
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -69,6 +72,34 @@ func TestIsSystemDylib(t *testing.T) {
 	}
 	if isSystemDylib("/opt/conda/lib/libc++.1.dylib") {
 		t.Fatal("conda lib must be vendored")
+	}
+}
+
+func TestResolveCondaExe(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := "m4"
+	if runtime.GOOS == "windows" {
+		name = "m4.exe"
+	}
+	path := filepath.Join(bin, name)
+	if err := os.WriteFile(path, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolveCondaExe(root, "m4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != path {
+		t.Fatalf("got %q want %q", got, path)
+	}
+	_, err = resolveCondaExe(root, "definitely-missing-tool")
+	if !errors.Is(err, ErrHostToolMissing) {
+		t.Fatalf("got %v", err)
 	}
 }
 

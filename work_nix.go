@@ -50,10 +50,19 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 	}
 	cmakeArgs = append(cmakeArgs, cmakeRPathArgs(req.Target)...)
 	if foundation.IsNativeTarget(req.Target) {
+		pref := condaPrefix(deps)
 		cc, cxx := condaCompilers()
+		ccAbs, err := resolveCondaExe(pref, cc)
+		if err != nil {
+			return err
+		}
+		cxxAbs, err := resolveCondaExe(pref, cxx)
+		if err != nil {
+			return err
+		}
 		cmakeArgs = append(cmakeArgs,
-			"-DCMAKE_C_COMPILER="+cc,
-			"-DCMAKE_CXX_COMPILER="+cxx,
+			"-DCMAKE_C_COMPILER="+ccAbs,
+			"-DCMAKE_CXX_COMPILER="+cxxAbs,
 		)
 		if foundation.IsWindowsTarget(req.Target) {
 			// MinGW: one relocatable exe, no libstdc++/libgcc DLLs beside it.

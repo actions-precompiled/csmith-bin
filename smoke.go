@@ -96,7 +96,12 @@ func compileGenerated(ctx context.Context, deps foundation.Deps, env []string, t
 	cc := "gcc"
 	obj := filepath.Join(tmp, "random")
 	if foundation.IsNativeTarget(target) {
-		cc, _ = condaCompilers()
+		name, _ := condaCompilers()
+		var err error
+		cc, err = resolveCondaExe(condaPrefix(deps), name)
+		if err != nil {
+			return err
+		}
 	}
 	if foundation.IsWindowsTarget(target) {
 		obj += ".exe"
