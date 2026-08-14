@@ -1,0 +1,3 @@
+[tools]
+# GNU m4 on conda-forge Windows is the msys2 port.
+"conda:m2-m4" = { version = "1.4.19.2", channel = "conda-forge" }

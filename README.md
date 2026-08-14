@@ -7,17 +7,12 @@ Csmith is a random generator of C programs (compiler differential testing).
 
 **Tagged releases only** for publish — use upstream tags like `csmith-2.3.0`.
 
-**Self-contained Linux trees** — post-install `patchelf` sets `$ORIGIN` RPATH;
-smoke runs with a clean loader env (no `LD_LIBRARY_PATH`).
+Every target builds on the GHA host. `mise install` pulls cmake, ninja, m4,
+and clang from conda-forge (`mise exec` puts them on PATH). Windows compiles
+with MSVC `cl`. After clone we apply the same 2.3.0 backports as
+[conda-forge/staged-recipes#34531](https://github.com/conda-forge/staged-recipes/pull/34531).
 
-**Windows / macOS** build natively. `mise` installs `micromamba`; PrepHost
-creates `.cache/conda-env` with cmake, ninja, and m4. macOS compiles with
-conda clang. Windows compiles with MSVC `cl`. After clone we apply the same
-2.3.0 backports as [conda-forge/staged-recipes#34531](https://github.com/conda-forge/staged-recipes/pull/34531)
-(FilterKind, x64 `_asm`, bind2nd/ptr_fun, `install(TARGETS)`). Go stays on mise.
-
-**Linux stays Docker.** Artifacts are Ubuntu 24.04 glibc + `$ORIGIN` RPATH.
-A conda compiler would vendor conda `libstdc++` and change that contract.
+Linux trees still get `$ORIGIN` RPATH via `patchelf`.
 
 ## Layout
 
@@ -37,7 +32,7 @@ mise install
 mise exec -- go run . plan                    # → latest missing/upstream tag
 mise exec -- go run . list                    # missing tags (one per line)
 mise exec -- go run . list --all
-mise exec -- go run . build csmith-2.3.0      # host injects binary into Docker
+mise exec -- go run . build csmith-2.3.0
 mise exec -- go run . smoke csmith-2.3.0
 mise exec -- go run . generate workflow --force
 ```
@@ -48,10 +43,7 @@ Bare versions work too: `go run . build 2.3.0` clones tag `csmith-2.3.0`.
 
 | Layer | What runs |
 |-------|-----------|
-| Host | `go run . build <tag>` — plan, docker image (linux), native Work (windows/darwin), smoke, publish |
-| Container | `/apc work` — Linux only |
-
-Dockerfile is **deps only** (no shell `ENTRYPOINT`).
+| Host | `mise exec -- go run . build <tag>` — Work + smoke + publish |
 
 ### CI
 
@@ -60,10 +52,10 @@ Dockerfile is **deps only** (no shell `ENTRYPOINT`).
 
 ## Targets
 
-- `linux-amd64`, `linux-aarch64` — Docker on GHA ubuntu runners
-- `windows-amd64` — native on `windows-latest` (MSVC `cl` + conda cmake/ninja/m4; static libcsmith only)
-- `darwin-amd64` — native on `macos-13` (conda clang; non-system dylibs vendored)
-- `darwin-aarch64` — native on `macos-latest` (same)
+- `linux-amd64`, `linux-aarch64` — host Work on ubuntu runners (mise clang)
+- `windows-amd64` — `windows-latest` (MSVC `cl` + mise cmake/ninja/m4)
+- `darwin-amd64` — `macos-13` (mise clang)
+- `darwin-aarch64` — `macos-latest` (mise clang)
 
 ## Use after unpack
 
@@ -78,7 +70,7 @@ cc -I"$PWD/csmith/include/csmith-"* -o random random.c
 ## Notes
 
 - Upstream also has historical `git-conversion-*` tags; prefer `csmith-X.Y.Z`.
-- glibc is from Ubuntu 24.04 — older distros may not run the binary.
+- Linux binaries still need a recent glibc (GHA ubuntu-24.04).
 
 ## License
 

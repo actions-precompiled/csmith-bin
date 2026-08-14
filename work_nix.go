@@ -12,8 +12,7 @@ import (
 	"github.com/actions-precompiled/foundation"
 )
 
-// workCMake builds Csmith with cmake+ninja on the current host (or inside
-// the Linux build container as `/apc work`).
+// workCMake builds Csmith with cmake+ninja on the host (mise tools on PATH).
 func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, req foundation.BuildRequest) error {
 	suffix, err := archiveSuffix(req.Target)
 	if err != nil {
@@ -67,28 +66,14 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 			return err
 		}
 	}
-	if foundation.IsDarwinTarget(req.Target) {
-		pref := condaPrefix(deps)
-		cc, cxx := condaCompilers()
-		ccAbs, err := resolveCondaExe(pref, cc)
-		if err != nil {
-			return err
-		}
-		cxxAbs, err := resolveCondaExe(pref, cxx)
-		if err != nil {
-			return err
-		}
+	if !foundation.IsWindowsTarget(req.Target) {
+		cc, cxx := hostUnixCompilers()
 		cmakeArgs = append(cmakeArgs,
-			"-DCMAKE_C_COMPILER="+ccAbs,
-			"-DCMAKE_CXX_COMPILER="+cxxAbs,
+			"-DCMAKE_C_COMPILER="+cc,
+			"-DCMAKE_CXX_COMPILER="+cxx,
 		)
 	}
 	run := deps.Runner.Run
-	if foundation.IsNativeTarget(req.Target) {
-		run = func(ctx context.Context, name string, args ...string) error {
-			return runInConda(ctx, deps, name, args...)
-		}
-	}
 	if err := run(ctx, "cmake", cmakeArgs...); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}
@@ -124,7 +109,7 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 		if err != nil {
 			return err
 		}
-		if err := vendorLinkedDylibs(ctx, deps, condaPrefix(deps), filepath.Join(prefix, "lib"), bin); err != nil {
+		if err := vendorLinkedDylibs(ctx, deps, lookPathPrefix("clang"), filepath.Join(prefix, "lib"), bin); err != nil {
 			return err
 		}
 	case !foundation.IsNativeTarget(req.Target):

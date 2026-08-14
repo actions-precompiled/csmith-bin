@@ -1,0 +1,4 @@
+[tools]
+"conda:m4" = { version = "1.4.21", channel = "conda-forge" }
+"conda:clang" = { version = "latest", channel = "conda-forge" }
+"conda:clangxx" = { version = "latest", channel = "conda-forge" }

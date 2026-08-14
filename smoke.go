@@ -38,7 +38,7 @@ func smokeTarball(ctx context.Context, deps foundation.Deps, meta foundation.Met
 		return err
 	}
 
-	if !foundation.IsNativeTarget(target) {
+	if strings.HasPrefix(target, "linux-") {
 		if err := foundation.CheckLinuxRelocatable(root, foundation.RelocatableOpts{
 			RequiredBins: []string{"csmith"},
 		}); err != nil {
@@ -79,12 +79,7 @@ func smokeTarball(ctx context.Context, deps foundation.Deps, meta foundation.Met
 	if err != nil {
 		return err
 	}
-	compileEnv := env
-	if foundation.IsDarwinTarget(target) {
-		// Generated binary is smoked under CleanSmokeEnv; Darwin cc is conda clang.
-		compileEnv = condaEnviron(deps, deps.Env.Environ())
-	}
-	if err := compileGenerated(ctx, deps, compileEnv, target, tmp, inc, gen); err != nil {
+	if err := compileGenerated(ctx, deps, env, target, tmp, inc, gen); err != nil {
 		return err
 	}
 
@@ -104,15 +99,7 @@ func compileGenerated(ctx context.Context, deps foundation.Deps, env []string, t
 		deps.Logf("cl compiled generated C with /I%s", inc)
 		return nil
 	}
-	cc := "gcc"
-	if foundation.IsDarwinTarget(target) {
-		var err error
-		name, _ := condaCompilers()
-		cc, err = resolveCondaExe(condaPrefix(deps), name)
-		if err != nil {
-			return err
-		}
-	}
+	cc, _ := hostUnixCompilers()
 	obj := filepath.Join(tmp, "random")
 	out, err := foundation.OutputWithEnv(ctx, deps, env, cc, "-O0", "-I"+inc, "-o", obj, gen)
 	if err != nil {

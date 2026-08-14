@@ -4,8 +4,7 @@
 //	go run . build csmith-2.3.0
 //	go run . generate workflow --force
 //
-// Linux builds mount this binary into Docker and run: /apc work.
-// Windows and macOS run Work on the host inside a micromamba conda-forge env.
+// All targets run Work on the host. Tools come from mise (conda: backend).
 package main
 
 import (
@@ -25,11 +24,11 @@ func (csmithPackage) Meta() foundation.Meta {
 		Name:            "csmith",
 		UpstreamRepoAPI: "csmith-project/csmith",
 		UpstreamGit:     "https://github.com/csmith-project/csmith.git",
-		ImageName:       "csmith-buildenv",
 		Binary:          "csmith",
 		VersionEnv:      "CSMITH_VERSION",
 		Description:     "Relocatable Csmith (random C program generator) for compiler testing.",
 		Homepage:        "https://github.com/csmith-project/csmith",
+		HostOnly:        true,
 		DefaultTargets: []string{
 			foundation.TargetLinuxAMD64,
 			foundation.TargetLinuxAArch64,

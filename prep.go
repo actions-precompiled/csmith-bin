@@ -12,35 +12,11 @@ import (
 // PrepHost implements foundation.HostPrep.
 func (csmithPackage) PrepHost(ctx context.Context, deps foundation.Deps, cfg foundation.Config) error {
 	startPreclones(ctx, deps, csmithPackage{}.Meta(), cfg.Versions)
-
-	if foundation.TargetsNeedDocker(cfg.Targets) {
-		if _, err := deps.Runner.Output(ctx, "docker", "version"); err != nil {
-			return fmt.Errorf("docker required for linux targets: %w", err)
-		}
-		deps.Logf("PrepHost: docker OK")
-	}
-	if !hasNativeTarget(cfg.Targets) {
-		return nil
-	}
-	return prepNativeHost(ctx, deps)
+	return prepHostTools(ctx, deps)
 }
 
-func hasNativeTarget(targets []string) bool {
-	for _, t := range targets {
-		if foundation.IsNativeTarget(t) {
-			return true
-		}
-	}
-	return false
-}
-
-func prepNativeHost(ctx context.Context, deps foundation.Deps) error {
-	if _, err := deps.Runner.Output(ctx, "micromamba", "--version"); err != nil {
-		return fmt.Errorf("%w: micromamba (install via mise): %w", ErrHostToolMissing, err)
-	}
-	if err := ensureCondaEnv(ctx, deps); err != nil {
-		return err
-	}
+func prepHostTools(ctx context.Context, deps foundation.Deps) error {
+	// mise exec already put conda: tools on PATH.
 	tools := []struct {
 		name string
 		args []string
@@ -50,7 +26,7 @@ func prepNativeHost(ctx context.Context, deps foundation.Deps) error {
 		{"m4", []string{"--version"}},
 	}
 	if runtime.GOOS != "windows" {
-		cc, cxx := condaCompilers()
+		cc, cxx := hostUnixCompilers()
 		tools = append(tools,
 			struct {
 				name string
@@ -63,15 +39,11 @@ func prepNativeHost(ctx context.Context, deps foundation.Deps) error {
 		)
 	}
 	for _, tool := range tools {
-		abs, err := resolveCondaExe(condaPrefix(deps), tool.name)
+		out, err := deps.Runner.Output(ctx, tool.name, tool.args...)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %s (install via mise): %w", ErrHostToolMissing, tool.name, err)
 		}
-		out, err := outputInConda(ctx, deps, tool.name, tool.args...)
-		if err != nil {
-			return fmt.Errorf("%w: %s (%s): %w", ErrHostToolMissing, tool.name, abs, err)
-		}
-		deps.Logf("PrepHost: %s (%s) %s", tool.name, abs, firstLine(out))
+		deps.Logf("PrepHost: %s %s", tool.name, firstLine(out))
 	}
 	if runtime.GOOS == "windows" {
 		return requireMSVC(ctx, deps)
