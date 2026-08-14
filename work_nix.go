@@ -143,8 +143,8 @@ built_at=%s
 	}
 
 	archive := filepath.Join(req.OutDir, foundation.ArtifactName(meta.Name, artifactVer, suffix))
-	if err := deps.Runner.Run(ctx, "tar", "-czf", archive, "-C", stage, meta.Name); err != nil {
-		return fmt.Errorf("tar: %w", err)
+	if err := tarCreate(ctx, deps, archive, stage, meta.Name); err != nil {
+		return err
 	}
 	deps.Logf("Done: %s", archive)
 	return nil
@@ -165,6 +165,18 @@ func buildWorkRoot(deps foundation.Deps, meta foundation.Meta) string {
 		return filepath.Join(tmp, meta.Name+"-build")
 	}
 	return filepath.Join("/tmp", meta.Name+"-build")
+}
+
+// tarCreate writes archive. GNU tar on Windows treats D:\... as host D.
+func tarCreate(ctx context.Context, deps foundation.Deps, archive, stage, name string) error {
+	args := []string{"-czf", archive, "-C", stage, name}
+	if runtime.GOOS == "windows" {
+		args = append([]string{"--force-local"}, args...)
+	}
+	if err := deps.Runner.Run(ctx, "tar", args...); err != nil {
+		return fmt.Errorf("tar: %w", err)
+	}
+	return nil
 }
 
 func cmakeRPathArgs(target string) []string {
