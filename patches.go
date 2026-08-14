@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/actions-precompiled/foundation"
 )
@@ -24,6 +25,30 @@ var upstreamPatches = []string{
 }
 
 const patchMarker = ".apc-upstream-patches"
+
+// ensurePatchedSrc applies backports in place. If src is the read-only
+// docker mount (/src), copy to writable and patch there.
+func ensurePatchedSrc(ctx context.Context, deps foundation.Deps, src, writable string) (string, error) {
+	err := applyUpstreamPatches(ctx, deps, src)
+	if err == nil {
+		return src, nil
+	}
+	ro := filepath.ToSlash(src) == "/src" || strings.HasPrefix(filepath.ToSlash(src), "/src/")
+	if !ro || writable == "" || writable == src {
+		return "", err
+	}
+	deps.Logf("patches: %s not writable (%v); copying to %s", src, err, writable)
+	if err := deps.FS.MkdirAll(writable, 0o755); err != nil {
+		return "", err
+	}
+	if err := deps.Runner.Run(ctx, "cp", "-a", src+"/.", writable); err != nil {
+		return "", fmt.Errorf("copy prebuilt src: %w", err)
+	}
+	if err := applyUpstreamPatches(ctx, deps, writable); err != nil {
+		return "", err
+	}
+	return writable, nil
+}
 
 func applyUpstreamPatches(ctx context.Context, deps foundation.Deps, src string) error {
 	marker := filepath.Join(src, patchMarker)

@@ -56,6 +56,11 @@ func startPreclones(ctx context.Context, deps foundation.Deps, meta foundation.M
 				e.res = precloneResult{Err: err}
 				return
 			}
+			if err := applyUpstreamPatches(ctx, deps, src); err != nil {
+				deps.Logf("preclone: %s patch: %v", version, err)
+				e.res = precloneResult{Err: err}
+				return
+			}
 			deps.Logf("preclone: %s ready ref=%s sha=%s", version, ref, sha)
 			e.res = precloneResult{Src: src, Ref: ref, Artifact: art, SHA: sha}
 		}(v, src, e)

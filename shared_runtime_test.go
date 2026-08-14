@@ -39,6 +39,12 @@ install(TARGETS libcsmith_so
 	if !ok || again != out {
 		t.Fatal("not idempotent")
 	}
+
+	crlf := strings.ReplaceAll(in, "\n", "\r\n")
+	out2, ok := wrapSharedRuntimeCMake(crlf)
+	if !ok || !strings.Contains(out2, "if(NOT WIN32) # APC_SKIP_SHARED_RUNTIME") {
+		t.Fatalf("CRLF wrap failed:\n%s", out2)
+	}
 }
 
 func TestWrapSharedRuntimeCMakeMissing(t *testing.T) {

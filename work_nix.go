@@ -41,7 +41,8 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 	}
 	deps.Logf("Resolved ref=%s sha=%s artifact=%s src=%s", ref, sha, artifactVer, src)
 
-	if err := applyUpstreamPatches(ctx, deps, src); err != nil {
+	src, err = ensurePatchedSrc(ctx, deps, src, filepath.Join(work, "src"))
+	if err != nil {
 		return err
 	}
 
@@ -345,6 +346,7 @@ func disableWindowsSharedRuntime(deps foundation.Deps, src string) error {
 }
 
 func wrapSharedRuntimeCMake(s string) (string, bool) {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
 	if !strings.Contains(s, "add_library(libcsmith_so") {
 		return s, false
 	}
