@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func TestIsMiseShim(t *testing.T) {
+	t.Parallel()
+	if !isMiseShim(`C:\Users\runneradmin\AppData\Local\mise\shims\ninja`) {
+		t.Fatal("shim")
+	}
+	if isMiseShim(`C:\Users\runneradmin\AppData\Local\mise\installs\conda-ninja\1.12.1\Library\bin\ninja.exe`) {
+		t.Fatal("real ninja")
+	}
+}
+
 func TestFindWindowsM4(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

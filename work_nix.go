@@ -57,8 +57,15 @@ func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 	}
 	cmakeArgs = append(cmakeArgs, cmakeRPathArgs(req.Target)...)
 	if foundation.IsWindowsTarget(req.Target) {
+		ninja, err := resolveRealNinja()
+		if err != nil {
+			return err
+		}
+		deps.Logf("cmake Ninja: %s", ninja)
 		// GHA PATH has LLVM clang first; keep MSVC for the Windows binary.
+		// mise shims are not PE binaries; cmake cannot exec shims/ninja.
 		cmakeArgs = append(cmakeArgs,
+			"-DCMAKE_MAKE_PROGRAM="+ninja,
 			"-DCMAKE_C_COMPILER=cl",
 			"-DCMAKE_CXX_COMPILER=cl",
 		)

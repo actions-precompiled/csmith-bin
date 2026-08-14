@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -82,6 +83,55 @@ func ensureM4(ctx context.Context, deps foundation.Deps) error {
 	}
 	deps.Logf("PrepHost: PATH prepend %s", dir)
 	return nil
+}
+
+func isMiseShim(p string) bool {
+	s := filepath.ToSlash(strings.ReplaceAll(p, `\`, "/"))
+	return strings.Contains(s, "/shims/")
+}
+
+func resolveRealNinja() (string, error) {
+	names := []string{"ninja"}
+	if runtime.GOOS == "windows" {
+		names = []string{"ninja.exe", "ninja"}
+	}
+	if p, err := exec.LookPath("ninja"); err == nil && !isMiseShim(p) {
+		return p, nil
+	}
+	globs := []string{
+		filepath.Join("conda-ninja", "*", "Library", "bin", "ninja.exe"),
+		filepath.Join("conda-ninja", "*", "Library", "bin", "ninja"),
+		filepath.Join("conda-ninja", "*", "bin", "ninja.exe"),
+		filepath.Join("conda-ninja", "*", "bin", "ninja"),
+		filepath.Join("ninja", "*", "bin", "ninja.exe"),
+		filepath.Join("ninja", "*", "bin", "ninja"),
+	}
+	for _, root := range windowsM4SearchRoots() {
+		for _, g := range globs {
+			matches, err := filepath.Glob(filepath.Join(root, g))
+			if err == nil && len(matches) > 0 {
+				return matches[0], nil
+			}
+		}
+		var found string
+		_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			base := strings.ToLower(d.Name())
+			for _, n := range names {
+				if base == strings.ToLower(n) && !isMiseShim(p) {
+					found = p
+					return fs.SkipAll
+				}
+			}
+			return nil
+		})
+		if found != "" {
+			return found, nil
+		}
+	}
+	return "", fmt.Errorf("%w: ninja.exe under mise installs (not a shim)", ErrHostToolMissing)
 }
 
 func windowsM4SearchRoots() []string {
