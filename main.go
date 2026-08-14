@@ -4,7 +4,8 @@
 //	go run . build csmith-2.3.0
 //	go run . generate workflow --force
 //
-// Linux builds mount this binary into Docker and run: /apc work
+// Linux builds mount this binary into Docker and run: /apc work.
+// Windows and macOS run Work on the host inside a micromamba conda-forge env.
 package main
 
 import (
@@ -32,14 +33,17 @@ func (csmithPackage) Meta() foundation.Meta {
 		DefaultTargets: []string{
 			foundation.TargetLinuxAMD64,
 			foundation.TargetLinuxAArch64,
+			foundation.TargetWindowsAMD64,
+			foundation.TargetDarwinAMD64,
+			foundation.TargetDarwinAArch64,
 		},
 	}
 }
 
 func (p csmithPackage) Work(ctx context.Context, deps foundation.Deps, req foundation.BuildRequest) error {
-	return workLinux(ctx, deps, p.Meta().Normalize(), req)
+	return workCMake(ctx, deps, p.Meta().Normalize(), req)
 }
 
 func (p csmithPackage) Smoke(ctx context.Context, deps foundation.Deps, req foundation.SmokeRequest) error {
-	return smokeLinux(ctx, deps, p.Meta().Normalize(), req)
+	return smokeArtifacts(ctx, deps, p.Meta().Normalize(), req)
 }

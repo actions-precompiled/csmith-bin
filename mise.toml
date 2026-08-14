@@ -1,2 +1,5 @@
 [tools]
 go = "1.26.5"
+# Native windows-*/darwin-* Work: micromamba creates .cache/conda-env
+# (cmake, ninja, m4, clang or MinGW). Linux cells still use Docker.
+micromamba = "2.9"

@@ -10,6 +10,14 @@ Csmith is a random generator of C programs (compiler differential testing).
 **Self-contained Linux trees** — post-install `patchelf` sets `$ORIGIN` RPATH;
 smoke runs with a clean loader env (no `LD_LIBRARY_PATH`).
 
+**Windows / macOS** build natively in a conda-forge env. `mise` installs
+`micromamba`; PrepHost creates `.cache/conda-env` with cmake, ninja, m4, and
+a compiler (MinGW on Windows, clang on macOS). Go stays on mise — that is the
+org-wide package CLI toolchain.
+
+**Linux stays Docker.** Artifacts are Ubuntu 24.04 glibc + `$ORIGIN` RPATH.
+A conda compiler would vendor conda `libstdc++` and change that contract.
+
 ## Layout
 
 ```text
@@ -39,8 +47,8 @@ Bare versions work too: `go run . build 2.3.0` clones tag `csmith-2.3.0`.
 
 | Layer | What runs |
 |-------|-----------|
-| Host | `go run . build <tag>` — plan, docker image, mount binary as `/apc`, smoke, publish |
-| Container | `/apc work` — pure Go `Package.Work` |
+| Host | `go run . build <tag>` — plan, docker image (linux), native Work (windows/darwin), smoke, publish |
+| Container | `/apc work` — Linux only |
 
 Dockerfile is **deps only** (no shell `ENTRYPOINT`).
 
@@ -51,7 +59,10 @@ Dockerfile is **deps only** (no shell `ENTRYPOINT`).
 
 ## Targets
 
-- `linux-amd64`, `linux-aarch64` — native GHA runners
+- `linux-amd64`, `linux-aarch64` — Docker on GHA ubuntu runners
+- `windows-amd64` — native on `windows-latest` (conda MinGW, statically linked)
+- `darwin-amd64` — native on `macos-13` (conda clang; non-system dylibs vendored)
+- `darwin-aarch64` — native on `macos-latest` (same)
 
 ## Use after unpack
 
@@ -59,7 +70,7 @@ Dockerfile is **deps only** (no shell `ENTRYPOINT`).
 tar -xzf csmith-2.3.0-linux-amd64.tar.gz
 export PATH="$PWD/csmith/bin:$PATH"
 csmith --seed 1 > random.c
-gcc -I"$PWD/csmith/include/csmith-"* -o random random.c
+cc -I"$PWD/csmith/include/csmith-"* -o random random.c
 ./random
 ```
 

@@ -9,19 +9,19 @@ import (
 	"github.com/actions-precompiled/foundation"
 )
 
-func smokeLinux(ctx context.Context, deps foundation.Deps, meta foundation.Meta, req foundation.SmokeRequest) error {
+func smokeArtifacts(ctx context.Context, deps foundation.Deps, meta foundation.Meta, req foundation.SmokeRequest) error {
 	if len(req.Tarballs) == 0 {
 		return fmt.Errorf("%w", ErrSmokeNoTarballs)
 	}
 	for _, tb := range req.Tarballs {
-		if err := smokeLinuxTarball(ctx, deps, meta, tb); err != nil {
+		if err := smokeTarball(ctx, deps, meta, req.Target, tb); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func smokeLinuxTarball(ctx context.Context, deps foundation.Deps, meta foundation.Meta, tarball string) error {
+func smokeTarball(ctx context.Context, deps foundation.Deps, meta foundation.Meta, target, tarball string) error {
 	deps.Logf("Smoke test (csmith): %s", filepath.Base(tarball))
 	tmp, err := deps.FS.TempDir("", "csmith-smoke-")
 	if err != nil {
@@ -33,17 +33,19 @@ func smokeLinuxTarball(ctx context.Context, deps foundation.Deps, meta foundatio
 		return fmt.Errorf("extract: %w", err)
 	}
 	root := filepath.Join(tmp, meta.Name)
-	csmith := filepath.Join(root, "bin", "csmith")
-	if _, err := deps.FS.Stat(csmith); err != nil {
-		return fmt.Errorf("%w: bin/csmith", ErrCsmithMissing)
-	}
-
-	if err := foundation.CheckLinuxRelocatable(root, foundation.RelocatableOpts{
-		RequiredBins: []string{"csmith"},
-	}); err != nil {
+	csmith, err := findCsmithBin(deps, root)
+	if err != nil {
 		return err
 	}
-	deps.Logf("relocatable: RPATH/$ORIGIN OK")
+
+	if !foundation.IsNativeTarget(target) {
+		if err := foundation.CheckLinuxRelocatable(root, foundation.RelocatableOpts{
+			RequiredBins: []string{"csmith"},
+		}); err != nil {
+			return err
+		}
+		deps.Logf("relocatable: RPATH/$ORIGIN OK")
+	}
 
 	env := foundation.CleanSmokeEnv(deps.Env.Environ())
 
@@ -73,18 +75,37 @@ func smokeLinuxTarball(ctx context.Context, deps foundation.Deps, meta foundatio
 	}
 	deps.Logf("generated %d bytes of C (seed=1)", len(out))
 
-	// Compile generated C with host gcc using packaged headers.
 	inc, err := findCsmithInclude(deps, root)
 	if err != nil {
 		return err
 	}
-	obj := filepath.Join(tmp, "random")
-	if out, err := foundation.OutputWithEnv(ctx, deps, env, "gcc", "-O0", "-I"+inc, "-o", obj, gen); err != nil {
-		return fmt.Errorf("%w: %w\n%s", ErrCompileGenerated, err, out)
+	compileEnv := env
+	if foundation.IsNativeTarget(target) {
+		// Generated binary is smoked under CleanSmokeEnv; the compiler lives in the conda env.
+		compileEnv = condaEnviron(deps, deps.Env.Environ())
 	}
-	deps.Logf("host gcc compiled generated C with -I%s", inc)
+	if err := compileGenerated(ctx, deps, compileEnv, target, tmp, inc, gen); err != nil {
+		return err
+	}
 
 	deps.Logf("✓ Smoke test passed: %s", filepath.Base(tarball))
+	return nil
+}
+
+func compileGenerated(ctx context.Context, deps foundation.Deps, env []string, target, tmp, inc, gen string) error {
+	cc := "gcc"
+	obj := filepath.Join(tmp, "random")
+	if foundation.IsNativeTarget(target) {
+		cc, _ = condaCompilers()
+	}
+	if foundation.IsWindowsTarget(target) {
+		obj += ".exe"
+	}
+	out, err := foundation.OutputWithEnv(ctx, deps, env, cc, "-O0", "-I"+inc, "-o", obj, gen)
+	if err != nil {
+		return fmt.Errorf("%w: %w\n%s", ErrCompileGenerated, err, out)
+	}
+	deps.Logf("%s compiled generated C with -I%s", cc, inc)
 	return nil
 }
 

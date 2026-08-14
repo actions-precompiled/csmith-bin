@@ -12,16 +12,16 @@ import (
 	"github.com/actions-precompiled/foundation"
 )
 
-// workLinux builds Csmith inside the container (or any Linux host with deps).
-// Invoked as: /apc work
-func workLinux(ctx context.Context, deps foundation.Deps, meta foundation.Meta, req foundation.BuildRequest) error {
-	archiveSuffix, err := linuxArchiveSuffix(req.Target)
+// workCMake builds Csmith with cmake+ninja on the current host (or inside
+// the Linux build container as `/apc work`).
+func workCMake(ctx context.Context, deps foundation.Deps, meta foundation.Meta, req foundation.BuildRequest) error {
+	suffix, err := archiveSuffix(req.Target)
 	if err != nil {
 		return err
 	}
 
 	jobs := envOr(deps, "JOBS", strconv.Itoa(runtime.NumCPU()))
-	work := filepath.Join("/tmp", meta.Name+"-build")
+	work := buildWorkRoot(deps, meta)
 	src := filepath.Join(work, "src")
 	build := filepath.Join(work, "build")
 	stage := filepath.Join(work, "stage")
@@ -41,25 +41,38 @@ func workLinux(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 	}
 	deps.Logf("Resolved ref=%s sha=%s artifact=%s src=%s", ref, sha, artifactVer, src)
 
-	// In-source layout is OK for csmith; out-of-source is cleaner for rebuilds.
 	cmakeArgs := []string{
 		"-G", "Ninja",
 		"-S", src,
 		"-B", build,
 		"-DCMAKE_BUILD_TYPE=Release",
 		"-DCMAKE_INSTALL_PREFIX=" + prefix,
-		"-DCMAKE_INSTALL_RPATH=$ORIGIN/../lib",
-		"-DCMAKE_BUILD_RPATH_USE_ORIGIN=ON",
-		"-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-		"-DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF",
 	}
-	if err := deps.Runner.Run(ctx, "cmake", cmakeArgs...); err != nil {
+	cmakeArgs = append(cmakeArgs, cmakeRPathArgs(req.Target)...)
+	if foundation.IsNativeTarget(req.Target) {
+		cc, cxx := condaCompilers()
+		cmakeArgs = append(cmakeArgs,
+			"-DCMAKE_C_COMPILER="+cc,
+			"-DCMAKE_CXX_COMPILER="+cxx,
+		)
+		if foundation.IsWindowsTarget(req.Target) {
+			// MinGW: one relocatable exe, no libstdc++/libgcc DLLs beside it.
+			cmakeArgs = append(cmakeArgs, "-DCMAKE_EXE_LINKER_FLAGS=-static")
+		}
+	}
+	run := deps.Runner.Run
+	if foundation.IsNativeTarget(req.Target) {
+		run = func(ctx context.Context, name string, args ...string) error {
+			return runInConda(ctx, deps, name, args...)
+		}
+	}
+	if err := run(ctx, "cmake", cmakeArgs...); err != nil {
 		return fmt.Errorf("cmake configure: %w", err)
 	}
-	if err := deps.Runner.Run(ctx, "cmake", "--build", build, "--parallel", jobs); err != nil {
+	if err := run(ctx, "cmake", "--build", build, "--parallel", jobs); err != nil {
 		return fmt.Errorf("cmake build: %w", err)
 	}
-	if err := deps.Runner.Run(ctx, "cmake", "--install", build); err != nil {
+	if err := run(ctx, "cmake", "--install", build); err != nil {
 		return fmt.Errorf("cmake install: %w", err)
 	}
 
@@ -68,20 +81,8 @@ func workLinux(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 		deps.RemoveAllLog(src, "remove")
 	}
 
-	bin := filepath.Join(prefix, "bin", "csmith")
-	if _, err := deps.FS.Stat(bin); err != nil {
-		// Some older tags install to prefix root
-		alt := filepath.Join(prefix, "csmith")
-		if _, err2 := deps.FS.Stat(alt); err2 == nil {
-			if err := deps.FS.MkdirAll(filepath.Join(prefix, "bin"), 0o755); err != nil {
-				return err
-			}
-			if err := deps.Runner.Run(ctx, "mv", alt, bin); err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf("%w under %s", ErrCsmithMissing, prefix)
-		}
+	if err := ensureCsmithInBin(deps, prefix); err != nil {
+		return err
 	}
 
 	// Upstream also installs Perl drivers + data into bin/ (compiler_test.pl,
@@ -91,18 +92,27 @@ func workLinux(ctx context.Context, deps foundation.Deps, meta foundation.Meta, 
 		return err
 	}
 
-	// Drop cmake/pkgconfig metadata. Keep include/ + shared libs.
-	_ = deps.Runner.Run(ctx, "bash", "-c",
-		"rm -rf "+shellQuote(filepath.Join(prefix, "lib", "cmake"))+" "+
-			shellQuote(filepath.Join(prefix, "lib", "pkgconfig"))+" 2>/dev/null; true")
+	deps.RemoveAllLog(filepath.Join(prefix, "lib", "cmake"), "prune")
+	deps.RemoveAllLog(filepath.Join(prefix, "lib", "pkgconfig"), "prune")
 
-	if err := foundation.PatchLinuxOriginRPath(ctx, deps, prefix); err != nil {
-		return fmt.Errorf("relocatable rpath: %w", err)
-	}
-	if err := foundation.CheckLinuxRelocatable(prefix, foundation.RelocatableOpts{
-		RequiredBins: []string{"csmith"},
-	}); err != nil {
-		return fmt.Errorf("post-install relocatable check: %w", err)
+	switch {
+	case foundation.IsDarwinTarget(req.Target):
+		bin, err := findCsmithBin(deps, prefix)
+		if err != nil {
+			return err
+		}
+		if err := vendorLinkedDylibs(ctx, deps, condaPrefix(deps), filepath.Join(prefix, "lib"), bin); err != nil {
+			return err
+		}
+	case !foundation.IsNativeTarget(req.Target):
+		if err := foundation.PatchLinuxOriginRPath(ctx, deps, prefix); err != nil {
+			return fmt.Errorf("relocatable rpath: %w", err)
+		}
+		if err := foundation.CheckLinuxRelocatable(prefix, foundation.RelocatableOpts{
+			RequiredBins: []string{"csmith"},
+		}); err != nil {
+			return fmt.Errorf("post-install relocatable check: %w", err)
+		}
 	}
 
 	info := fmt.Sprintf(`package=%s
@@ -117,7 +127,7 @@ built_at=%s
 		return err
 	}
 
-	archive := filepath.Join(req.OutDir, foundation.ArtifactName(meta.Name, artifactVer, archiveSuffix))
+	archive := filepath.Join(req.OutDir, foundation.ArtifactName(meta.Name, artifactVer, suffix))
 	if err := deps.Runner.Run(ctx, "tar", "-czf", archive, "-C", stage, meta.Name); err != nil {
 		return fmt.Errorf("tar: %w", err)
 	}
@@ -125,15 +135,87 @@ built_at=%s
 	return nil
 }
 
-func linuxArchiveSuffix(target string) (string, error) {
+func buildWorkRoot(deps foundation.Deps, meta foundation.Meta) string {
+	if w := deps.Env.Get("APC_WORK_ROOT"); w != "" {
+		return filepath.Join(w, meta.Name+"-build")
+	}
+	if runtime.GOOS == "windows" {
+		tmp := deps.Env.Get("TEMP")
+		if tmp == "" {
+			tmp = deps.Env.Get("TMP")
+		}
+		if tmp == "" {
+			tmp = "."
+		}
+		return filepath.Join(tmp, meta.Name+"-build")
+	}
+	return filepath.Join("/tmp", meta.Name+"-build")
+}
+
+func cmakeRPathArgs(target string) []string {
+	switch {
+	case foundation.IsWindowsTarget(target):
+		return nil
+	case foundation.IsDarwinTarget(target):
+		return []string{
+			"-DCMAKE_INSTALL_RPATH=@loader_path/../lib",
+			"-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
+		}
+	default:
+		return []string{
+			"-DCMAKE_INSTALL_RPATH=$ORIGIN/../lib",
+			"-DCMAKE_BUILD_RPATH_USE_ORIGIN=ON",
+			"-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
+			"-DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF",
+		}
+	}
+}
+
+func archiveSuffix(target string) (string, error) {
 	switch target {
 	case foundation.TargetLinuxAMD64, "linux-x86_64":
 		return foundation.TargetLinuxAMD64, nil
 	case foundation.TargetLinuxAArch64, "linux-arm64":
 		return foundation.TargetLinuxAArch64, nil
+	case foundation.TargetWindowsAMD64, "windows-x86_64":
+		return foundation.TargetWindowsAMD64, nil
+	case foundation.TargetWindowsARM64, "windows-aarch64":
+		return foundation.TargetWindowsARM64, nil
+	case foundation.TargetDarwinAMD64, "macos-amd64", "macos-x86_64":
+		return foundation.TargetDarwinAMD64, nil
+	case foundation.TargetDarwinAArch64, "darwin-arm64", "macos-arm64", "macos-aarch64":
+		return foundation.TargetDarwinAArch64, nil
 	default:
 		return "", fmt.Errorf("%w: %q", ErrUnsupportedTarget, target)
 	}
+}
+
+func ensureCsmithInBin(deps foundation.Deps, prefix string) error {
+	if _, err := findCsmithBin(deps, prefix); err == nil {
+		return nil
+	}
+	// Some older tags install to prefix root.
+	for _, name := range []string{"csmith.exe", "csmith"} {
+		alt := filepath.Join(prefix, name)
+		if _, err := deps.FS.Stat(alt); err != nil {
+			continue
+		}
+		binDir := filepath.Join(prefix, "bin")
+		if err := deps.FS.MkdirAll(binDir, 0o755); err != nil {
+			return err
+		}
+		dest := filepath.Join(binDir, name)
+		data, err := deps.FS.ReadFile(alt)
+		if err != nil {
+			return err
+		}
+		if err := deps.FS.WriteFile(dest, data, 0o755); err != nil {
+			return err
+		}
+		deps.RemoveAllLog(alt, "move")
+		return nil
+	}
+	return fmt.Errorf("%w under %s", ErrCsmithMissing, prefix)
 }
 
 func cloneUpstream(ctx context.Context, deps foundation.Deps, upstream, versionRaw, src string) (ref, artifact, sha string, err error) {
@@ -189,21 +271,31 @@ func pruneBinToCsmith(deps foundation.Deps, binDir string) error {
 		return fmt.Errorf("read bin: %w", err)
 	}
 	for _, e := range entries {
-		if e.Name() == "csmith" {
+		if isCsmithBinName(e.Name()) {
 			continue
 		}
 		path := filepath.Join(binDir, e.Name())
 		deps.Logf("prune bin: remove %s", e.Name())
 		deps.RemoveAllLog(path, "prune")
 	}
-	if _, err := deps.FS.Stat(filepath.Join(binDir, "csmith")); err != nil {
+	if _, err := findCsmithBin(deps, filepath.Dir(binDir)); err != nil {
 		return fmt.Errorf("%w after prune", ErrCsmithMissing)
 	}
 	return nil
 }
 
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+func isCsmithBinName(name string) bool {
+	return name == "csmith" || name == "csmith.exe"
+}
+
+func findCsmithBin(deps foundation.Deps, root string) (string, error) {
+	for _, name := range []string{"csmith.exe", "csmith"} {
+		p := filepath.Join(root, "bin", name)
+		if _, err := deps.FS.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("%w: bin/csmith", ErrCsmithMissing)
 }
 
 func isUnderCache(src string) bool {
