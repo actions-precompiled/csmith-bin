@@ -33,7 +33,6 @@ func (csmithPackage) Meta() foundation.Meta {
 			foundation.TargetLinuxAMD64,
 			foundation.TargetLinuxAArch64,
 			foundation.TargetWindowsAMD64,
-			foundation.TargetDarwinAMD64,
 			foundation.TargetDarwinAArch64,
 		},
 	}

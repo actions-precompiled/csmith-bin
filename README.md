@@ -54,7 +54,6 @@ Bare versions work too: `go run . build 2.3.0` clones tag `csmith-2.3.0`.
 
 - `linux-amd64`, `linux-aarch64` — host Work on ubuntu runners (mise clang)
 - `windows-amd64` — `windows-latest` (MSVC `cl` + mise cmake/ninja/m4)
-- `darwin-amd64` — `macos-13` (mise clang)
 - `darwin-aarch64` — `macos-latest` (mise clang)
 
 ## Use after unpack

@@ -63,8 +63,6 @@ jobs:
             runner: ubuntu-24.04-arm
           - target: windows-amd64
             runner: windows-latest
-          - target: darwin-amd64
-            runner: macos-13
           - target: darwin-aarch64
             runner: macos-latest
     name: ${{ matrix.target }}
@@ -127,7 +125,7 @@ jobs:
       - name: go run . publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APC_TARGETS: "linux-amd64 linux-aarch64 windows-amd64 darwin-amd64 darwin-aarch64"
+          APC_TARGETS: "linux-amd64 linux-aarch64 windows-amd64 darwin-aarch64"
         run: |
           recreate_flag=
           case "${{ needs.plan.outputs.recreate }}" in true|1|yes) recreate_flag=--recreate ;; esac
